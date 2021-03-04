@@ -1,53 +1,80 @@
+# Core Library modules
 import ast
-import inspect
-import astpretty
-from collections import defaultdict
-from typing import TypeVar, Generic, Set, Dict, Any
 
-T = TypeVar('T')
+# First party modules
+from staticinflowanalysis.collector import collect_all_variables
+from staticinflowanalysis.hoare import Hoare
 
-
-class High(Generic[T]):
-    pass
+# T = TypeVar('T')
 
 
-class Low(Generic[T]):
-    pass
+# class High(Generic[T]):
+#     pass
 
 
-def foo(l: Set[Any], h: High[Any], h2: High, h3: High[Any], l1: Low[Any]):
-    l = h
-    return l
+# class Low(Generic[T]):
+#     pass
 
 
-class Visitor(ast.NodeVisitor):
+# def foo(l: Set[Any], h: High[Any], h2: High, h3: High[Any], l1: Low[Any]):
+#     l = h
+#     return l
 
-    def __init__(self) -> None:
-        self.highs: Set[str] = set()
-        self.lows: Set[str] = set()
 
-    def visit_FunctionDef(self, node: ast.AST):
-        types = self.get_type_annotations(node)
-        self.highs = self.highs.union(types['High'])
-        self.lows = self.lows.union(types['Low'])
-        if len(self.highs) > 0 and len(self.lows) > 0:
-            # Perform static analysis
-            pass
-        self.generic_visit(node)
+# class Visitor(ast.NodeVisitor):
 
-    def get_type_annotations(self, node: ast.AST) -> Dict[str, str]:
-        assert isinstance(
-            node, ast.FunctionDef), "Node is not a function definition"
+#     def __init__(self) -> None:
+#         self.highs: Set[str] = set()
+#         self.lows: Set[str] = set()
 
-        type_annotations = defaultdict(set)
+#     def visit_FunctionDef(self, node: ast.AST):
+#         types = self.get_type_annotations(node)
+#         self.highs = self.highs.union(types['High'])
+#         self.lows = self.lows.union(types['Low'])
+#         if len(self.highs) > 0 and len(self.lows) > 0:
+#             # Perform static analysis
+#             pass
+#         self.generic_visit(node)
 
-        for arg in node.args.args:
-            if isinstance(arg.annotation, ast.Subscript):
-                type_annotations[arg.annotation.value.id].add(arg.arg)
+#     def get_type_annotations(self, node: ast.AST) -> Dict[str, str]:
+#         assert isinstance(
+#             node, ast.FunctionDef), "Node is not a function definition"
 
-        return type_annotations
+#         type_annotations = defaultdict(set)
 
-    def check_types(self, tree: ast.AST):
-        self.__init__()
-        self.visit(tree)
-        return self.highs, self.lows
+#         for arg in node.args.args:
+#             if isinstance(arg.annotation, ast.Subscript):
+#                 type_annotations[arg.annotation.value.id].add(arg.arg)
+
+#         return type_annotations
+
+#     def check_types(self, tree: ast.AST):
+#         self.__init__()
+#         self.visit(tree)
+#         return self.highs, self.lows
+
+if __name__ == '__main__':
+    code = """
+x = 5
+while z < 5:
+    x *= 4
+y = x + 1
+    """
+    t = ast.parse(code)
+    var_set = collect_all_variables(t)
+    h = Hoare(var_set)
+    h.visit(t)
+    print("Independencies for")
+    print(code)
+    h.print_independencies()
+    print("Flows: ")
+    flows = h.detect_flow(t, {'x'}, {'z'})
+
+    if flows:
+        for x, ys in flows.items():
+            for y in ys:
+                print(x, "->", y)
+    else:
+        print("No flow found")
+
+

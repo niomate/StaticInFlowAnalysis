@@ -1,22 +1,25 @@
+# Core Library modules
 import ast
-from types import Variables
+
+# Local modules
+from .typedefs import Variables
 
 
 class VariableCollector(ast.NodeVisitor):
 
-    def __init__(self):
-        self.vars = set()
-        self.free_only = False
+    def __init__(self) -> None:
+        self.vars: Variables = set()
+        self.free_only: bool = False
 
-    def visit_Call(self, node: ast.Call):
+    def visit_Call(self, node: ast.Call) -> None:
         for arg in node.args:
             self.visit(arg)
 
-    def visit_Name(self, node: ast.Name):
+    def visit_Name(self, node: ast.Name) -> None:
         if not self.free_only or isinstance(node.ctx, ast.Load):
             self.vars.add(node.id)
 
-    def collect(self, tree: ast.AST, free_only: bool = True):
+    def collect(self, tree: ast.AST, free_only: bool = True) -> Variables:
         self.vars = set()
         self.free_only = free_only
         self.visit(tree)
