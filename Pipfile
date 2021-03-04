@@ -5,8 +5,21 @@ name = "pypi"
 
 [packages]
 click = "*"
+astpretty = "*"
+astor = "*"
 
 [dev-packages]
+neovim = "*"
+flake8-implicit-str-concat = "*"
+pep8-naming = "*"
+flake8-isort = "*"
+flake8-bugbear = "*"
+flake8-print = "*"
+flake8-debugger = "*"
+flake8-todo = "*"
+flake8-eradicate = "*"
+flake8-comprehensions = "*"
+flake8-executable = "*"
 
 [requires]
 python_version = "3.9"
