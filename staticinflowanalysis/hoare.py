@@ -1,11 +1,19 @@
 # Core Library modules
 import ast
 import copy
-from typing import Sequence, Dict
+from collections import defaultdict
+from enum import Enum
+from typing import Dict, Sequence
 
 # Local modules
 from .collector import collect_free_variables
 from .typedefs import Indeps, Variables
+
+
+class Confidentiality(Enum):
+    High = "High"
+    Low = "Low"
+    NA = ""
 
 
 def intersect(sets: Sequence[Variables]) -> Variables:
@@ -41,7 +49,11 @@ class Hoare(ast.NodeVisitor):
         self.indeps: Indeps = {}
         self.all_vars: Variables = varset
         for var in varset:
-            self.indeps[var] = {x for x in varset if x != var}
+            self.indeps[var] = {
+                x
+                for x in varset
+                if x != var
+            }
 
     def calc_indeps(self, free_vars_in_expr: Variables) -> Variables:
         ''' Calculate the set of independencies for the
@@ -63,6 +75,32 @@ class Hoare(ast.NodeVisitor):
             for var in free_vars_in_expr
         ])
 
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        prios = [x.split(":") for x in node.type_comment.split(",")]
+        prios = {x.strip(): Confidentiality(y.strip()) for x, y in prios}
+        high = {x for x, y in prios.items() if y == Confidentiality.High}
+        low = {x for x, y in prios.items() if y == Confidentiality.Low}
+
+        self.generic_visit(node)
+
+        high &= self.indeps.keys()
+        low &= self.indeps.keys()
+        flow = defaultdict(set)
+        errors = []
+        for h in high:
+            for l in low:
+                if l not in self.indeps[h]:
+                    # Information flow from l to h
+                    flow[l].add(h)
+                    errors += [
+                        f"SFA01: {node.name}: Information flow from low variable {l} to high variable {h}"]
+                if h not in self.indeps[l]:
+                    flow[h].add(l)
+                    errors += [
+                        f"SFA02: {node.name}: Information flow from high variable {h} to low variable {l}"]
+
+        print("\n".join(errors))
+
     def visit_While(self, node: ast.While) -> None:
         free_vars: Variables = collect_free_variables(node.test)
         old_ctx: Variables = self.context.copy()
@@ -70,9 +108,11 @@ class Hoare(ast.NodeVisitor):
         while True:
             deps: Variables = self.calc_deps(free_vars)
             prev_indeps = copy.deepcopy(self.indeps)
-            self.context.update(deps)
+            self.context |= deps
+
             for n in node.body:
                 self.visit(n)
+
             self.indeps = join(self.indeps, prev_indeps)
 
             if self.indeps == prev_indeps:
@@ -81,15 +121,17 @@ class Hoare(ast.NodeVisitor):
         self.context = old_ctx
 
     def visit_For(self, node: ast.For) -> None:
-        free_vars: Variables = collect_free_variables(node.test)
+        free_vars: Variables = collect_free_variables(node.iter)
         old_ctx: Variables = self.context.copy()
 
         while True:
             deps: Variables = self.calc_deps(free_vars)
             prev_indeps = copy.deepcopy(self.indeps)
-            self.context.update(deps)
+            self.context |= deps
+
             for n in node.body:
                 self.visit(n)
+
             self.indeps = join(self.indeps, prev_indeps)
 
             if self.indeps == prev_indeps:
@@ -106,7 +148,7 @@ class Hoare(ast.NodeVisitor):
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         old_ctx: Variables = self.context.copy()
         target: ast.Name = node.target
-        self.context.update(target.id)
+        self.context |= {target.id}
         free_vars: Variables = collect_free_variables(node.value)
         indeps: Variables = self.calc_indeps(free_vars) - self.context
         target: ast.Name = node.target
@@ -119,7 +161,7 @@ class Hoare(ast.NodeVisitor):
         free_vars: Variables = collect_free_variables(node.test)
 
         deps: Variables = self.calc_deps(free_vars)
-        self.context.update(deps)
+        self.context |= deps
         intermediate_ctx: Variables = self.context.copy()
 
         for n in node.body:
@@ -145,16 +187,14 @@ class Hoare(ast.NodeVisitor):
 
     def detect_flow(self, tree: ast.AST, high: Variables, low: Variables) -> Dict[str, str]:
         self.visit(tree)
-        flow = {}
+        high &= self.indeps.keys()
+        low &= self.indeps.keys()
+        flow = defaultdict(set)
         for h in high:
             for l in low:
                 if l not in self.indeps[h]:
-                    if h not in flow:
-                        flow[h] = set()
                     flow[h].add(l)
                 if h not in self.indeps[l]:
-                    if l not in flow:
-                        flow[l] = set()
                     flow[l].add(h)
 
         return flow

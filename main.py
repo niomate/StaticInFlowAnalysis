@@ -55,26 +55,21 @@ from staticinflowanalysis.hoare import Hoare
 
 if __name__ == '__main__':
     code = """
-x = 5
-while z < 5:
-    x *= 4
-y = x + 1
+def foo(x, z):  # type: x: Low, z: High
+    if x > 10:
+        z = y
+    else:
+        z = -x
+    return z
+
+def bar(x, z, y, a): # type: x:High, z:Low
+    while y < z:
+        x *= y
+    return y + a
     """
-    t = ast.parse(code)
+    print("Analysed code:")
+    print(code)
+    t = ast.parse(code, type_comments=True)
     var_set = collect_all_variables(t)
     h = Hoare(var_set)
     h.visit(t)
-    print("Independencies for")
-    print(code)
-    h.print_independencies()
-    print("Flows: ")
-    flows = h.detect_flow(t, {'x'}, {'z'})
-
-    if flows:
-        for x, ys in flows.items():
-            for y in ys:
-                print(x, "->", y)
-    else:
-        print("No flow found")
-
-
