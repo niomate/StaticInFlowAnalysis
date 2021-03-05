@@ -3,11 +3,11 @@ import ast
 import copy
 from collections import defaultdict
 from enum import Enum
-from typing import Dict, Sequence
+from typing import Dict, Sequence, Optional
 
 # Local modules
-from .collector import collect_free_variables
-from .typedefs import Indeps, Variables
+from .collector import collect_free_variables, collect_all_variables
+from .typedefs import Indeps, Variables, Errors
 
 
 class Confidentiality(Enum):
@@ -38,16 +38,18 @@ def union(sets: Sequence[Variables]) -> Variables:
 
 def join(s1: Indeps, s2: Indeps) -> Indeps:
     ''' Join two independency sets by intersection '''
-    # TODO: Check if this is the correct implementation of the join
     return {x: s1[x] & s2[x] for x in s1}
 
 
 class Hoare(ast.NodeVisitor):
+    error_sa01 = "SFA01: {}: Information flow from low variable {} to high variable {}".format
+    error_sa02 = "SFA02: {}: Information flow from high variable {} to low variable {}".format
 
     def __init__(self, varset: Variables) -> None:
         self.context: Variables = set()
         self.indeps: Indeps = {}
         self.all_vars: Variables = varset
+        self.errors = []
         for var in varset:
             self.indeps[var] = {
                 x
@@ -76,32 +78,43 @@ class Hoare(ast.NodeVisitor):
         ])
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        prios = [x.split(":") for x in node.type_comment.split(",")]
-        prios = {x.strip(): Confidentiality(y.strip()) for x, y in prios}
-        high = {x for x, y in prios.items() if y == Confidentiality.High}
-        low = {x for x, y in prios.items() if y == Confidentiality.Low}
+        ''' For each function detect if there is any flow from high to low or
+        low to high variables. '''
+
+        prios = [
+            x.split(":")
+            for x in node.type_comment.split(",")
+        ]
+        prios = {
+            x.strip(): Confidentiality(y.strip())
+            for x, y in prios
+        }
+        high = set()
+        low = set()
+
+        for x, y in prios.items():
+            if x not in self.all_vars:
+                continue
+            if y == Confidentiality.High:
+                high.add(x)
+            elif y == Confidentiality.Low:
+                low.add(x)
 
         self.generic_visit(node)
 
-        high &= self.indeps.keys()
-        low &= self.indeps.keys()
-        flow = defaultdict(set)
-        errors = []
-        for h in high:
-            for l in low:
-                if l not in self.indeps[h]:
-                    # Information flow from l to h
-                    flow[l].add(h)
-                    errors += [
-                        f"SFA01: {node.name}: Information flow from low variable {l} to high variable {h}"]
-                if h not in self.indeps[l]:
-                    flow[h].add(l)
-                    errors += [
-                        f"SFA02: {node.name}: Information flow from high variable {h} to low variable {l}"]
-
-        print("\n".join(errors))
+        for high_var in high:
+            for low_var in low:
+                if low_var not in self.indeps[high_var]:
+                    # Information flow from low_var to high_var
+                    self.errors += [self.error_sa01(node.name,
+                                                    low_var, high_var)]
+                if high_var not in self.indeps[low_var]:
+                    # Information flow from high_var to low_var
+                    self.errors += [self.error_sa02(node.name,
+                                                    high_var, low_var)]
 
     def visit_While(self, node: ast.While) -> None:
+        ''' Fixpoint iteration for Hoare logic '''
         free_vars: Variables = collect_free_variables(node.test)
         old_ctx: Variables = self.context.copy()
 
@@ -121,6 +134,8 @@ class Hoare(ast.NodeVisitor):
         self.context = old_ctx
 
     def visit_For(self, node: ast.For) -> None:
+        ''' Fixpoint iteration for Hoare logic '''
+        free_vars: Variables = collect_free_variables(node.test)
         free_vars: Variables = collect_free_variables(node.iter)
         old_ctx: Variables = self.context.copy()
 
@@ -181,20 +196,12 @@ class Hoare(ast.NodeVisitor):
 
         self.context = old_ctx
 
-    def print_independencies(self):
-        for var, indeps in self.indeps.items():
-            print(var + "#" + ",".join(iter(indeps)))
 
-    def detect_flow(self, tree: ast.AST, high: Variables, low: Variables) -> Dict[str, str]:
-        self.visit(tree)
-        high &= self.indeps.keys()
-        low &= self.indeps.keys()
-        flow = defaultdict(set)
-        for h in high:
-            for l in low:
-                if l not in self.indeps[h]:
-                    flow[h].add(l)
-                if h not in self.indeps[l]:
-                    flow[l].add(h)
-
-        return flow
+def analyse(tree: ast.AST, var_set: Optional[Variables] = None) -> Errors:
+    ''' Statically analyze the given tree using Hoare logic and return any
+    errors found '''
+    if not var_set:
+        var_set = collect_all_variables(tree)
+    hoare = Hoare(var_set)
+    hoare.visit(tree)
+    return hoare.errors
