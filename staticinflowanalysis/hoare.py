@@ -184,7 +184,7 @@ class Hoare(ast.NodeVisitor):
                         error_type = self.STA300
                     else:
                         error_type = self.STA100
-
+                # TODO: We potentially have to add 2 errors here (high->low and low->high)
                 self.add_error(
                     line=node.lineno,
                     col=node.col_offset,
