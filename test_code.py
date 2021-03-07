@@ -11,3 +11,10 @@ def bar(x, y):  # flow: Low, High
         y = 13
         c = x
     return y
+
+
+def baz(x):
+    def foobar(z, y):  # flow: High, Low
+        x = z + y
+        return x
+    return foobar(x, 10)

@@ -1,7 +1,7 @@
 # Core Library modules
 import ast
 import copy
-from typing import List, Optional, Sequence, Callable, Tuple
+from typing import List, Optional, Sequence
 
 # Local modules
 from .collector import (
@@ -9,9 +9,14 @@ from .collector import (
     collect_free_variables,
     extract_flow_config,
 )
-from .typedefs import Confidentiality, Errors, FlowConfig, Indeps, Variables
-
-ErrorCode = Callable[[str, str, str], str]
+from .typedefs import (
+    Confidentiality,
+    ErrorCode,
+    Errors,
+    FlowConfig,
+    Indeps,
+    Variables,
+)
 
 
 def intersect(sets: Sequence[Variables]) -> Variables:
@@ -42,27 +47,27 @@ def join(s1: Indeps, s2: Indeps) -> Indeps:
 class Hoare(ast.NodeVisitor):
     STA100: ErrorCode = (
         "STA100 Information flow from high variable '{high}' to "
-        "low variable '{low}' in function '{func}'".format
+        "low variable '{low}' in {inner_func}function '{func}'".format
     )
     STA101: ErrorCode = (
         "STA101 Information flow from low variable '{low}' to "
-        "high variable '{high}' in function '{func}'".format
+        "high variable '{high}' in {inner_func}function '{func}'".format
     )
     STA200: ErrorCode = (
         "STA200 Information flow from local high variable '{high}' to "
-        "low variable '{low}' in function '{func}'".format
+        "low variable '{low}' in {inner_func}function '{func}'".format
     )
     STA201: ErrorCode = (
         "STA201 Information flow from local low variable '{low}' to "
-        "high variable '{high}' in function '{func}'".format
+        "high variable '{high}' in {inner_func}function '{func}'".format
     )
     STA300: ErrorCode = (
         "STA300 Information flow from high variable '{high}' to "
-        "local low variable '{low}' in function '{func}'".format
+        "local low variable '{low}' in {inner_func}function '{func}'".format
     )
     STA301: ErrorCode = (
         "STA301 Information flow from low variable '{low}' to "
-        "local high variable '{high}' in function '{func}'".format
+        "local high variable '{high}' in {inner_func}function '{func}'".format
     )
 
     # TODO: Make varset optional and extract it on the go on every function
@@ -83,6 +88,7 @@ class Hoare(ast.NodeVisitor):
         self.high: Variables = set()
         self.low: Variables = set()
         self.locals: Variables = set()
+        self.level = 0
 
         # Parameters
         # Code lines
@@ -107,15 +113,37 @@ class Hoare(ast.NodeVisitor):
         return union([self.all_vars - self.indeps[var] for var in free_vars_in_expr])
 
     def add_var(self, var: str, confidentiality: Confidentiality) -> None:
+        """Add a variable with a given confidentiality to the respective set
+        (high/low)"""
         if confidentiality == Confidentiality.High:
             self.high.add(var)
         elif confidentiality == Confidentiality.Low:
             self.low.add(var)
 
     def add_error(
-        self, line: int, col: int, tp: ErrorCode, low: str, high: str, func: str
+        self,
+        line: int,
+        col: int,
+        tp: ErrorCode,
+        low: str,
+        high: str,
+        func: str,
+        inner_func: bool = False,
     ) -> None:
-        self.errors += [(line, col, tp(low=low, high=high, func=func))]
+        """Add an error of type `tp` at line `line` and column `col` to the
+        error list"""
+        self.errors += [
+            (
+                line,
+                col,
+                tp(
+                    low=low,
+                    high=high,
+                    func=func,
+                    inner_func="inner " if inner_func else "",
+                ),
+            )
+        ]
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """For each function detect if there is any flow from high to low or
@@ -130,6 +158,7 @@ class Hoare(ast.NodeVisitor):
         self.high = set()
         self.low = set()
         self.locals = set()
+        self.level += 1
 
         for x, y in zip(var_names, flow_conf):
             self.add_var(x, y)
@@ -163,11 +192,13 @@ class Hoare(ast.NodeVisitor):
                     low=low_var,
                     high=high_var,
                     func=node.name,
+                    inner_func=self.level > 1,
                 )
-
+        # Restore old variables (in case of nested functions)
         self.high = old_high
         self.low = old_low
         self.locals = old_locals
+        self.level = max(0, self.level - 1)
 
     def visit_While(self, node: ast.While) -> None:
         """ Fixpoint iteration for Hoare logic """
