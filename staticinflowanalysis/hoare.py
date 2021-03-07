@@ -176,6 +176,16 @@ class Hoare(ast.NodeVisitor):
                         error_type = self.STA301
                     else:
                         error_type = self.STA101
+
+                    self.add_error(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        tp=error_type,
+                        low=low_var,
+                        high=high_var,
+                        func=node.name,
+                        inner_func=self.level > 1,
+                    )
                 if high_var not in self.indeps[low_var]:
                     # Information flow from high_var to low_var
                     if high_var in self.locals:
@@ -184,16 +194,16 @@ class Hoare(ast.NodeVisitor):
                         error_type = self.STA300
                     else:
                         error_type = self.STA100
-                # TODO: We potentially have to add 2 errors here (high->low and low->high)
-                self.add_error(
-                    line=node.lineno,
-                    col=node.col_offset,
-                    tp=error_type,
-                    low=low_var,
-                    high=high_var,
-                    func=node.name,
-                    inner_func=self.level > 1,
-                )
+
+                    self.add_error(
+                        line=node.lineno,
+                        col=node.col_offset,
+                        tp=error_type,
+                        low=low_var,
+                        high=high_var,
+                        func=node.name,
+                        inner_func=self.level > 1,
+                    )
         # Restore old variables (in case of nested functions)
         self.high = old_high
         self.low = old_low
