@@ -1,8 +1,11 @@
 # Core Library modules
 import ast
+import re
 
 # Local modules
-from .typedefs import Variables
+from .typedefs import Variables, Confidentiality, FlowConfig
+
+flow_regex = re.compile(r".*#\ *(flow:).*$")
 
 
 class VariableCollector(ast.NodeVisitor):
@@ -39,3 +42,15 @@ def collect_free_variables(tree: ast.AST) -> Variables:
 def collect_all_variables(tree: ast.AST) -> Variables:
     c = VariableCollector()
     return c.collect(tree, free_only=False)
+
+
+def extract_flow_config(line: str):
+    match = re.match(flow_regex, line)
+    if not match:
+        return []
+    start_flow = match.end(1)
+
+    return [
+        Confidentiality(x.strip()) for x in line[start_flow:].split(",")
+    ]
+

@@ -5,7 +5,9 @@ def foo(a_long_variable_name, z, y):  # flow: Low, High, High
     return z
 
 
-def bar(x, y):  # flow: High, Low
-    if x > 10:
+def bar(x, y):  # flow: Low, High
+    c = 34  # flow: High
+    if x > c:
         y = 13
+        c = x
     return y

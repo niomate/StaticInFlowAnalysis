@@ -10,7 +10,7 @@ else:
     import importlib.metadata as importlib_metadata
 
 # First party modules
-from staticinflowanalysis.hoare import analyse, extract_flow_config
+from staticinflowanalysis.hoare import analyse
 from staticinflowanalysis.typedefs import FlowConfig
 
 
@@ -24,8 +24,7 @@ class Plugin:
         self._lines = lines
 
     def run(self) -> Generator[Tuple[int, int, str, Type[Any]], None, None]:
-        flow_config: FlowConfig = extract_flow_config(self._lines)
-        errors = analyse(self._tree, flow_config)
+        errors = analyse(self._tree, self._lines)
 
         for line, col, msg in errors:
             yield line, col, msg, type(self)
