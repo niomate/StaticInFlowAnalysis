@@ -11,7 +11,6 @@ else:
 
 # First party modules
 from staticinflowanalysis.hoare import analyse
-from staticinflowanalysis.typedefs import FlowConfig
 
 
 class Plugin:

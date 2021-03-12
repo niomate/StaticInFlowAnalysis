@@ -301,12 +301,12 @@ class Hoare(ast.NodeVisitor):
 
 
 def analyse(
-    tree: ast.AST, flow_conf: FlowConfig, var_set: Optional[Variables] = None
+    tree: ast.AST, lines: Sequence[str], var_set: Optional[Variables] = None
 ) -> Errors:
     """Statically analyze the given tree using Hoare logic and return any
     errors found"""
     if not var_set:
         var_set = collect_all_variables(tree)
-    hoare = Hoare(flow_conf, var_set)
+    hoare = Hoare(lines, var_set)
     hoare.visit(tree)
     return hoare.errors
